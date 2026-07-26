@@ -249,6 +249,14 @@ apify push
 
 After the build succeeds, open the Actor in the Apify Console and publish it to the Store.
 
+## Validated end to end
+
+The scanner was tested against an intentionally vulnerable mock MCP server containing deliberately introduced credential-like metadata, prompt-injection instructions, URL-based SSRF risk surfaces, malformed-input error leakage, and weak schema definitions.
+
+The test run discovered **3 tools** and produced **12 categorized findings** with a **66/100 (Grade C)** assessment using both static analysis and authorized dynamic checks.
+
+[View the complete sanitized sample report](docs/sample-vulnerable-mcp-report.md)
+
 ## Roadmap
 
 Planned extensions include:
