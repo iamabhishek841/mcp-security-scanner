@@ -21,7 +21,7 @@
       "title": "Run dynamic checks",
       "type": "boolean",
       "description": "If enabled, the scanner will make live test calls to the server (SSRF probes, malformed input, auth bypass attempts) in addition to static schema analysis. Disable for a read-only, schema-only scan.",
-      "default": true
+      "default": false
     },
     "maxToolsToTest": {
       "title": "Max tools to dynamically test",
