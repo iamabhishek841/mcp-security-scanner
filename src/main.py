@@ -17,7 +17,7 @@ async def main() -> None:
 
         server_url: str | None = actor_input.get("serverUrl")
         auth_header: str | None = actor_input.get("authHeader") or None
-        run_dynamic: bool = actor_input.get("runDynamicChecks", True)
+        run_dynamic: bool = actor_input.get("runDynamicChecks", False)
         max_tools: int = actor_input.get("maxToolsToTest", 10)
 
         if not server_url:
