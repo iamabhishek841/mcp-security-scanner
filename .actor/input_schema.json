@@ -1,0 +1,36 @@
+{
+  "title": "MCP Security Scanner Input",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "serverUrl": {
+      "title": "MCP Server URL",
+      "type": "string",
+      "description": "Full URL of the MCP server's Streamable HTTP endpoint (e.g. https://example.com/mcp).",
+      "editor": "textfield",
+      "prefill": "https://example.com/mcp"
+    },
+    "authHeader": {
+      "title": "Authorization header (optional)",
+      "type": "string",
+      "description": "If the server requires auth to list tools, provide it here (e.g. 'Bearer sk-...'). Leave empty to also test the server's unauthenticated behavior.",
+      "editor": "textfield",
+      "isSecret": true
+    },
+    "runDynamicChecks": {
+      "title": "Run dynamic checks",
+      "type": "boolean",
+      "description": "If enabled, the scanner will make live test calls to the server (SSRF probes, malformed input, auth bypass attempts) in addition to static schema analysis. Disable for a read-only, schema-only scan.",
+      "default": true
+    },
+    "maxToolsToTest": {
+      "title": "Max tools to dynamically test",
+      "type": "integer",
+      "description": "Caps how many exposed tools get live dynamic testing, to control scan time and load on the target server.",
+      "default": 10,
+      "minimum": 1,
+      "maximum": 50
+    }
+  },
+  "required": ["serverUrl"]
+}

@@ -1,0 +1,10 @@
+{
+  "actorSpecification": 1,
+  "name": "mcp-security-scanner",
+  "title": "MCP Server Security & Trust Scanner",
+  "description": "Audits Model Context Protocol (MCP) servers for security and trust issues: auth handling, SSRF exposure, secret leakage, prompt-injection risk in tool schemas, and error-handling hygiene. Outputs a scored, shareable report.",
+  "version": "0.1",
+  "buildTag": "latest",
+  "input": "./input_schema.json",
+  "dockerfile": "../Dockerfile"
+}

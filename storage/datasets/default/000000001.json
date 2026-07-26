@@ -1,0 +1,94 @@
+{
+  "scanned_at": "2026-07-26T12:13:04.712646Z",
+  "server_url": "http://127.0.0.1:8765/mcp",
+  "server_name": "mock-mcp-server",
+  "protocol_version": "2025-06-18",
+  "reachable": true,
+  "tool_count": 3,
+  "score": 66,
+  "grade": "C",
+  "summary": {
+    "tools_with_secrets": 1,
+    "tools_with_injection_risk": 1,
+    "tools_with_ssrf_prone_params": 2,
+    "tools_with_poor_schema": 1,
+    "dynamic_checks_run": true,
+    "ssrf_suspicious_tools": 2,
+    "unauth_accessible_tools": 0,
+    "stack_trace_leaks": 3
+  },
+  "findings": [
+    {
+      "severity": "critical",
+      "category": "secret_leak",
+      "tool": "get_weather",
+      "message": "Possible OpenAI-style API key found embedded in tool metadata."
+    },
+    {
+      "severity": "high",
+      "category": "prompt_injection_risk",
+      "tool": "fetch_url",
+      "message": "Tool description contains agent-directed instruction language: 'ignore previous instructions'."
+    },
+    {
+      "severity": "high",
+      "category": "prompt_injection_risk",
+      "tool": "fetch_url",
+      "message": "Tool description contains agent-directed instruction language: 'always call this tool first'."
+    },
+    {
+      "severity": "high",
+      "category": "ssrf_confirmed_or_unclear",
+      "tool": "fetch_url",
+      "message": "Tool accepted an internal/metadata URL (http://169.254.169.254/latest/meta-data/) as input and returned 200 without a validation error. Manually verify whether the server actually fetched it (possible SSRF)."
+    },
+    {
+      "severity": "high",
+      "category": "ssrf_confirmed_or_unclear",
+      "tool": "ping",
+      "message": "Tool accepted an internal/metadata URL (http://169.254.169.254/latest/meta-data/) as input and returned 200 without a validation error. Manually verify whether the server actually fetched it (possible SSRF)."
+    },
+    {
+      "severity": "medium",
+      "category": "ssrf_prone_param",
+      "tool": "fetch_url",
+      "message": "Parameter 'url' accepts a URL/path-like value. If unvalidated server-side, this can enable SSRF or path traversal."
+    },
+    {
+      "severity": "medium",
+      "category": "ssrf_prone_param",
+      "tool": "ping",
+      "message": "Parameter 'host' accepts a URL/path-like value. If unvalidated server-side, this can enable SSRF or path traversal."
+    },
+    {
+      "severity": "medium",
+      "category": "error_leakage",
+      "tool": "fetch_url",
+      "message": "Malformed input triggered what looks like a raw stack trace in the response — this can leak internal paths/framework details."
+    },
+    {
+      "severity": "medium",
+      "category": "error_leakage",
+      "tool": "get_weather",
+      "message": "Malformed input triggered what looks like a raw stack trace in the response — this can leak internal paths/framework details."
+    },
+    {
+      "severity": "medium",
+      "category": "error_leakage",
+      "tool": "ping",
+      "message": "Malformed input triggered what looks like a raw stack trace in the response — this can leak internal paths/framework details."
+    },
+    {
+      "severity": "low",
+      "category": "schema_quality",
+      "tool": "ping",
+      "message": "Tool has little or no description — harder for agents to use safely and correctly."
+    },
+    {
+      "severity": "low",
+      "category": "schema_quality",
+      "tool": "ping",
+      "message": "Parameter 'host' has no declared type — ambiguous input contract."
+    }
+  ]
+}
