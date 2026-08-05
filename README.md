@@ -1,276 +1,259 @@
 # MCP Server Security & Trust Scanner
 
-**Preflight security and trust analysis for remote Model Context Protocol (MCP) servers.**
+**A safe-by-default Apify Actor for reviewing MCP tools before an AI agent can use them.**
 
-Inspect an MCP server before connecting it to Claude, ChatGPT, an internal agent, or an automated workflow. The scanner discovers exposed tools, analyzes their schemas and descriptions, optionally performs authorized behavioral checks, and generates a scored report that can be reviewed, exported, or shared with your engineering and security teams.
+The scanner connects to a Model Context Protocol (MCP) Streamable HTTP
+endpoint, discovers every advertised tool, analyzes agent-facing metadata and
+JSON Schemas, and produces both structured output and a Markdown report.
+Optional behavioral checks are restricted to tool names the operator explicitly
+authorizes.
 
-> Designed for MCP server developers, AI platform teams, security reviewers, integration engineers, and organizations evaluating third-party MCP servers.
+This is useful for AI platform teams, MCP server authors, security reviewers,
+and agent builders deciding whether a new tool surface is suitable for an
+agentic workflow.
 
-## Why use this scanner?
+## Safety model
 
-MCP servers can expose powerful capabilities to AI agents: fetching URLs, reading files, calling internal APIs, querying databases, or triggering business actions. A poorly described or weakly protected tool can introduce avoidable risk before the server is ever connected to an agent.
+Static analysis is always the default and does not execute MCP tools.
 
-This Actor helps you perform a fast, repeatable preflight review by highlighting:
+Dynamic checks run only when all of the following are true:
 
-- Potential credential exposure in tool metadata
-- Agent-directed or prompt-injection-style instructions
-- URL/path input surfaces that may require SSRF or path-traversal controls
-- Weak or ambiguous tool schemas
-- Unexpected unauthenticated tool behavior
-- Error responses that may disclose stack traces or implementation details
-- Suspicious handling of internal or cloud-metadata URL inputs
+- `runDynamicChecks` is `true`.
+- `authorizedToTest` is `true`.
+- `dynamicToolAllowlist` contains at least one exact tool name.
+- The advertised tool name exactly matches an allowlist entry.
 
-It produces both a machine-readable result and a human-readable report, making it suitable for one-off reviews, CI workflows, vendor assessments, and repeatable MCP onboarding checks.
+An empty allowlist or missing authorization fails safely before any tool call.
+The scanner never automatically executes every discovered tool. Dynamic checks
+may still trigger target-side effects, so review each allowed tool before
+enabling them.
 
-## Key capabilities
+SSRF behavioral testing has an additional gate: it runs only when `probeUrl` is
+explicitly supplied. Use a callback endpoint you control. The scanner contains
+no built-in cloud-metadata, localhost, or private-service targets.
 
-### 1. MCP endpoint discovery
+## What is implemented
 
-The scanner connects to a remote MCP **Streamable HTTP** endpoint and performs the protocol calls needed to:
+### MCP Streamable HTTP lifecycle
 
-- Initialize the MCP connection
-- Read server identity and protocol information when available
-- Enumerate tools through `tools/list`
-- Capture tool names, descriptions, and input schemas
+The client:
 
-### 2. Metadata and schema analysis
+1. Sends `initialize` as the first MCP interaction.
+2. Advertises the stable `2025-11-25` revision as its preferred version.
+3. Accepts negotiation only to `2025-11-25`, `2025-06-18`, or `2025-03-26`;
+   unknown versions fail cleanly and draft revisions are not implemented.
+4. Captures `Mcp-Session-Id` from the initialize response when supplied.
+5. Sends `notifications/initialized`.
+6. Includes `Mcp-Session-Id` and the actual negotiated
+   `MCP-Protocol-Version` on subsequent requests.
+7. Preserves `Authorization`, `Content-Type`, and JSON/SSE `Accept` headers.
+8. Handles plain JSON and Server-Sent Events (SSE).
+9. Selects the SSE JSON-RPC response matching the request ID, ignoring unrelated
+   notifications, server requests, and responses.
+10. Reports top-level JSON-RPC errors without treating them as successful calls.
+11. Follows opaque `nextCursor` values until all `tools/list` pages are read.
 
-This mode analyzes the exposed tool metadata without executing the tools themselves.
+### Static checks
 
-Checks include:
+Static checks inspect tool names, descriptions, and relevant JSON Schema values.
+Schema inspection is recursive across nested object properties, array item
+schemas, schema compositions, descriptions, defaults, examples, and enum values.
 
-- **Potential secret exposure**  
-  Detects credential-like patterns in tool names and descriptions, including common API-key, cloud-key, access-token, JWT, and private-key formats.
+The scanner reports:
 
-- **Prompt-injection indicators**  
-  Flags agent-directed language such as attempts to override prior instructions, hide behavior from the user, force tool ordering, or bypass refusal behavior.
+- Credential-shaped metadata such as API keys, cloud access keys, tokens, JWTs,
+  and private-key headers. Findings identify the pattern type but never copy the
+  matched value.
+- Clearly agent-directed or instruction-overriding prompt-injection language.
+  Generic wording such as `act as` is not flagged on its own.
+- Nested URL/path-shaped parameters that may require server-side SSRF or path
+  controls.
+- Missing descriptions and parameters without a declared type or equivalent
+  schema contract.
 
-- **URL and path risk surfaces**  
-  Identifies top-level parameters with names such as `url`, `uri`, `endpoint`, `host`, `target`, `path`, `file`, `filepath`, or `callback`. These parameters are not automatically vulnerabilities, but they often require strong server-side validation.
+### Authorized dynamic checks
 
-- **Schema quality issues**  
-  Flags missing or very short tool descriptions and input parameters without a declared type.
+For each exact allowlisted tool (up to `maxToolsToTest`), the scanner can:
 
-### 3. Optional authorized dynamic checks
+- Submit the operator-controlled `probeUrl` to top-level URL/path-like
+  parameters. Acceptance is only a risk signal; it does not prove the URL was
+  fetched.
+- Submit malformed values and inspect the response for stack-trace markers.
+- When `authHeader` was supplied, initialize a separate MCP session without that
+  header and compare the tool's unauthenticated behavior.
 
-Dynamic checks execute live `tools/call` requests against a limited number of exposed tools. They should only be enabled for MCP servers that you own or are explicitly authorized to test.
+A call is considered successful only when the HTTP status is 2xx, there is no
+top-level JSON-RPC error, and `result.isError` is not `true`.
 
-Checks include:
+## Actor input
 
-- **Internal URL acceptance probe**  
-  For tools exposing URL-like parameters, the scanner submits a controlled internal/cloud-metadata-style URL and reports when the tool returns HTTP 200 without a top-level validation error. This is a risk indicator requiring manual verification; it does not by itself prove that the target URL was fetched.
+| Field | Required | Description |
+|---|---:|---|
+| `serverUrl` | Yes | Full MCP Streamable HTTP endpoint. |
+| `authHeader` | No | Authorization header for the authenticated scan. This secret is not written to output. Supplying it enables a separate unauthenticated comparison in authorized dynamic mode. |
+| `runDynamicChecks` | No | Enables allowlisted live tool calls. Default: `false`. |
+| `authorizedToTest` | For dynamic mode | Explicit confirmation that the operator owns or is authorized to test the server. Default: `false`. |
+| `dynamicToolAllowlist` | For dynamic mode | Array of exact advertised tool names allowed to receive live calls. Default: `[]`. |
+| `probeUrl` | No | Controlled callback URL. Without it, SSRF behavioral testing is skipped. |
+| `maxToolsToTest` | No | Maximum matching allowlisted tools to test, from 1 to 50. Default: `10`. |
 
-- **Malformed-input handling**  
-  Sends schema-invalid or oversized values and checks the response for stack-trace and framework-detail indicators.
-
-- **Unexpected unauthenticated behavior**  
-  When an authorization header is supplied for the scan, the scanner also makes a comparison call without that header and reports tools that appear to respond successfully. Some tools may intentionally permit public access, so the result should be reviewed in context.
-
-You can cap dynamic testing from **1 to 50 tools** using `maxToolsToTest`.
-
-## What you receive
-
-Every successful run produces:
-
-### Structured JSON result
-
-Saved to the default Apify dataset and as the `OUTPUT` record in the key-value store.
-
-The result contains:
-
-- Scan timestamp
-- Target server URL
-- MCP server name and protocol version when available
-- Reachability status
-- Number of tools discovered
-- 0–100 preflight score
-- A–F grade
-- Summary counts by check category
-- Full severity-ranked findings list
-
-### Human-readable Markdown report
-
-Saved as `REPORT.md` in the Actor's key-value store. The report is ready to download, attach to a review ticket, or share with a developer, platform, security, or procurement team.
-
-## Example report
-
-```text
-MCP Security & Trust Report
-
-Server: https://example.com/mcp
-Tools exposed: 14
-Score: 72/100 (Grade C)
-
-Summary
-- Tools with possible secret leaks: 0
-- Tools with prompt-injection-style language: 1
-- Tools with URL/path risk surfaces: 3
-- Tools with weak or incomplete schemas: 4
-- Dynamic checks run: yes
-
-Findings
-[HIGH] prompt_injection_risk (system_lookup)
-Tool description contains agent-directed instruction language.
-
-[HIGH] ssrf_confirmed_or_unclear (fetch_resource)
-The tool accepted an internal/cloud-metadata-style URL and returned 200
-without a top-level validation error. Manual verification is required.
-
-[LOW] schema_quality (create_ticket)
-Parameter 'priority' has no declared type.
-```
-
-## Input
+### Static-mode input
 
 ```json
 {
   "serverUrl": "https://your-mcp-server.example.com/mcp",
-  "authHeader": "Bearer sk-...",
+  "authHeader": "Bearer your-secret",
   "runDynamicChecks": false,
-  "maxToolsToTest": 10
+  "authorizedToTest": false,
+  "dynamicToolAllowlist": []
 }
 ```
 
-### Input fields
+### Safe authorized dynamic-mode input
 
-| Field | Required | Description |
-|---|---:|---|
-| `serverUrl` | Yes | Full URL of the remote MCP Streamable HTTP endpoint. |
-| `authHeader` | No | Authorization header used when the server requires authentication, for example `Bearer ...`. The field is configured as secret input and is not included in the generated reports. |
-| `runDynamicChecks` | No | Enables live tool calls for behavioral checks. Keep disabled unless you own or are authorized to test the server. Default: `false`. |
-| `maxToolsToTest` | No | Maximum number of discovered tools to test dynamically. Allowed range: 1–50. Default: `10`. |
+```json
+{
+  "serverUrl": "https://your-mcp-server.example.com/mcp",
+  "authHeader": "Bearer your-secret",
+  "runDynamicChecks": true,
+  "authorizedToTest": true,
+  "dynamicToolAllowlist": [
+    "fetch_preview",
+    "format_record"
+  ],
+  "probeUrl": "https://callback-you-control.example/mcp-scan",
+  "maxToolsToTest": 2
+}
+```
 
-## How to use
+## Output for users and AI agents
 
-1. Click **Try for free**.
-2. Enter the MCP server's remote Streamable HTTP endpoint.
-3. Add an authorization header when the server requires one.
-4. Leave dynamic checks disabled for metadata/schema-only analysis.
-5. Enable dynamic checks only for a server you own or are authorized to test.
-6. Run the Actor.
-7. Review the dataset output or download `REPORT.md` from the key-value store.
+`.actor/output_schema.json` exposes three run outputs:
 
-## Common use cases
+- Structured results in the default dataset.
+- The complete `OUTPUT` JSON key-value-store record.
+- The human-readable `REPORT.md` record.
 
-### Review an MCP server before connecting it to an AI agent
+Every successful assessment includes:
 
-Run a preflight scan before adding a new MCP endpoint to Claude, ChatGPT, an IDE, an internal agent platform, or a production automation workflow.
+- `scanned_at`, `server_url`, `server_name`, and `protocol_version`
+- `reachable` and `tool_count`
+- `score`, `grade`, `summary`, and severity-ranked `findings`
+- `scan_mode` (`static` or `static_and_dynamic`)
+- `tools_tested_dynamically`
+- `dynamic_tool_allowlist`
+- `controlled_probe_url_used`
+- run-specific `limitations`
 
-### Validate your own MCP server before release
+The dataset's documented `Overview` table shows timestamp, server name,
+reachability, tool count, score, grade, scan mode, and controlled-callback use.
+The complete nested `summary`, `findings`, and `limitations` remain in every
+dataset item.
 
-Catch risky metadata, ambiguous schemas, credential-like strings, weak validation signals, and error leakage before publishing your server.
+Authorization values and detected credential strings are not included.
+Server-controlled identifiers and messages are normalized to one line in JSON
+and rendered as inert text or safe code spans in Markdown.
 
-### Compare MCP server versions
+[View the sanitized report produced by the local demo](docs/sample-vulnerable-mcp-report.md).
 
-Run the scanner after changing tool descriptions, schemas, authentication, or input validation and compare the resulting score and findings.
+## Safe reproducible demo
 
-### Support security and vendor assessment
+The repository includes an intentionally vulnerable local MCP server with
+exactly three non-destructive tools. It simulates fake credential metadata,
+prompt-injection wording, a weak schema, a URL-risk input, a stack trace, and
+unauthenticated behavior. It never fetches URLs or accesses other services.
 
-Export the structured output or Markdown report as evidence for internal review. Findings are designed to guide follow-up verification rather than replace manual assessment.
-
-### Integrate into automated workflows
-
-Run the Actor through the Apify API from CI/CD, an internal security workflow, or an MCP server onboarding pipeline. Use the Actor's **API** tab to generate a ready-to-run request for your account and chosen language.
-
-## Understanding the score
-
-The scanner starts from 100 and applies weighted penalties based on the severity and category of the detected findings.
-
-| Grade | Score | Interpretation |
-|---|---:|---|
-| A | 90–100 | Strong automated preflight result; review informational context before approval. |
-| B | 75–89 | Generally acceptable, with findings that should be reviewed. |
-| C | 60–74 | Multiple weaknesses or one or more material risk indicators. |
-| D | 40–59 | Significant issues; remediation is recommended before connection. |
-| F | 0–39 | High-risk automated result; do not rely on the server without deeper review. |
-
-The score is a heuristic prioritization aid. It is not proof that a server is secure or insecure.
-
-## Severity levels
-
-- **Critical** — Credential or private-key-like material detected in exposed tool metadata
-- **High** — Prompt-injection indicators, suspicious internal-URL handling, or unexpected unauthenticated behavior
-- **Medium** — URL/path risk surfaces or stack-trace leakage
-- **Low** — Missing descriptions, ambiguous parameter types, or schema-quality issues
-
-## Security, privacy, and responsible use
-
-- Only run dynamic checks against systems you own or are explicitly authorized to test.
-- Dynamic mode executes tool calls and may cause the target server to process supplied arguments.
-- Review the exposed tools before enabling dynamic mode, especially when the server includes tools that can modify data, send messages, trigger deployments, create transactions, or perform other side effects.
-- The authorization value is accepted through a secret input field and is not written into the generated dataset or Markdown report.
-- Do not scan third-party infrastructure without permission. Unauthorized scanning may violate contracts, terms of service, or applicable law.
-
-## Scope and current limitations
-
-This release is an automated preflight scanner, not a penetration-testing suite.
-
-Current scope:
-
-- Remote MCP servers exposed through Streamable HTTP
-- Tool discovery via `tools/list`
-- Tool invocation via `tools/call` for optional dynamic checks
-- Tool names, descriptions, and top-level input-schema properties
-- JSON and basic SSE response handling
-
-Current limitations:
-
-- Local `stdio` MCP servers are not supported
-- Source-code repositories are not analyzed
-- Detection is heuristic and may produce false positives or false negatives
-- URL/path parameters indicate a risk surface, not a confirmed vulnerability
-- A successful internal-URL probe does not prove that the server fetched the URL
-- Successful unauthenticated responses may be intentional for public tools
-- Some stateful or implementation-specific MCP endpoints may not be fully compatible
-- The scanner does not replace threat modeling, code review, manual security testing, or a professional penetration test
-
-## Local development
+Install dependencies and start the demo from the repository root:
 
 ```bash
-pip install -r requirements.txt --break-system-packages
+python -m pip install -r requirements-dev.txt
+python examples/mock_mcp_server.py --host 127.0.0.1 --port 8765
+```
+
+The endpoint is `http://127.0.0.1:8765/mcp`.
+
+To run the Actor locally in static mode, create
+`storage/key_value_stores/default/INPUT.json` containing:
+
+```json
+{
+  "serverUrl": "http://127.0.0.1:8765/mcp",
+  "runDynamicChecks": false
+}
+```
+
+Then run, in a second terminal:
+
+```bash
 python -m src.main
 ```
 
-For local Actor execution, use `apify run` or create:
+For the demo's authorized dynamic mode, replace `INPUT.json` with:
 
-```text
-storage/key_value_stores/default/INPUT.json
+```json
+{
+  "serverUrl": "http://127.0.0.1:8765/mcp",
+  "authHeader": "Bearer demo-only",
+  "runDynamicChecks": true,
+  "authorizedToTest": true,
+  "dynamicToolAllowlist": [
+    "fetch_preview",
+    "credential_status",
+    "format_record"
+  ],
+  "probeUrl": "https://callback-you-control.example/demo",
+  "maxToolsToTest": 3
+}
 ```
 
-with an input object matching the schema shown above.
+The mock server only acknowledges the callback string; it does not make a
+network request. See [examples/README.md](examples/README.md) for its explicit
+safety guarantees.
 
-## Deploying your own copy to Apify
+## Development and verification
 
 ```bash
-npm install -g apify-cli
-apify login
-apify push
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+python -m ruff check src examples tests
+python -m compileall -q src examples
 ```
 
-After the build succeeds, open the Actor in the Apify Console and publish it to the Store.
+`tests/test_demo_integration.py` starts the local demo on an ephemeral port and
+runs discovery, recursive static checks, exact-allowlist dynamic checks,
+controlled-callback handling, stack-trace detection, and an unauthenticated
+comparison end to end.
 
-## Validated end to end
+## Score bands
 
-The scanner was tested against an intentionally vulnerable mock MCP server containing deliberately introduced credential-like metadata, prompt-injection instructions, URL-based SSRF risk surfaces, malformed-input error leakage, and weak schema definitions.
+| Grade | Score |
+|---|---:|
+| A | 90-100 |
+| B | 75-89 |
+| C | 60-74 |
+| D | 40-59 |
+| F | 0-39 |
 
-The test run discovered **3 tools** and produced **12 categorized findings** with a **66/100 (Grade C)** assessment using both static analysis and authorized dynamic checks.
+The score is a prioritization aid, not a security certification.
 
-[View the complete sanitized sample report](docs/sample-vulnerable-mcp-report.md)
+## Limitations
 
-## Roadmap
+- Only remote MCP Streamable HTTP endpoints are supported; local `stdio`
+  servers are not.
+- The scanner analyzes advertised metadata and observed responses, not server
+  source code or downstream infrastructure.
+- Credential, prompt-injection, schema, and stack-trace detection is heuristic.
+- URL/path parameters are risk surfaces, not proof of a vulnerability.
+- A successful controlled-probe response does not prove that the callback was
+  fetched; verify callback telemetry separately.
+- Successful unauthenticated behavior may be intentional for public tools.
+- Dynamic checks may cause side effects in the target implementation even when
+  supplied values appear harmless.
+- The Actor does not replace threat modeling, code review, or a professional
+  penetration test.
 
-Planned extensions include:
+## Responsible use
 
-- Source-code analysis when a GitHub repository is supplied
-- Recursive inspection of nested JSON schemas
-- Expanded credential and prompt-injection detection rules
-- Safer per-tool allowlisting for dynamic checks
-- Scheduled rescans and score history
-- Regression alerts when a server's security posture changes
-- CI/CD quality gates for MCP server releases
-- Organization-level reports across multiple MCP servers
-- Export formats for security and compliance workflows
-
-## Important disclaimer
-
-This Actor performs automated heuristic analysis. Results should be manually reviewed and validated. A high score does not certify an MCP server as secure, and a finding does not automatically confirm a vulnerability.
+Run dynamic checks only against systems you own or are explicitly authorized to
+test. Review each exact allowlisted tool and its possible side effects. Do not
+scan third-party infrastructure without permission.

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://apify-projects.github.io/actor-json-schemas/output.json?v=0.3",
+  "actorOutputSchemaVersion": 1,
+  "title": "MCP Security Scanner outputs",
+  "description": "Links for AI agents and users to consume the structured assessment or the human-readable report.",
+  "properties": {
+    "results": {
+      "type": "string",
+      "title": "Structured dataset results",
+      "description": "Dataset items containing the complete machine-readable MCP security assessment.",
+      "template": "{{links.apiDefaultDatasetUrl}}/items"
+    },
+    "outputJson": {
+      "type": "string",
+      "title": "OUTPUT JSON record",
+      "description": "The complete assessment as the default key-value store OUTPUT record.",
+      "template": "{{links.apiDefaultKeyValueStoreUrl}}/records/OUTPUT"
+    },
+    "reportMarkdown": {
+      "type": "string",
+      "title": "REPORT.md Markdown report",
+      "description": "A sanitized Markdown report for human review and ticket attachments.",
+      "template": "{{links.apiDefaultKeyValueStoreUrl}}/records/REPORT.md"
+    }
+  }
+}
