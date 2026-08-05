@@ -165,3 +165,84 @@ def test_incomplete_report_does_not_claim_a_security_score() -> None:
     markdown = build_markdown_report(report)
     assert "Score: unavailable (scan incomplete)" in markdown
     assert "None/100" not in markdown
+
+
+def test_untrusted_values_cannot_restructure_json_or_markdown_report() -> None:
+    # Deliberately pattern-shaped but visibly fake, non-working test credentials.
+    fake_apify_token = "apify_api_TESTONLYNOTREAL000000000000000000"
+    fake_bearer = "Bearer TESTONLYNOTREALCREDENTIAL000000000"
+    malicious = (
+        "bad`name\r\n## injected heading\n- [link](https://attacker.example) "
+        f"<div>raw html</div>\x00 {fake_apify_token} {fake_bearer}"
+    )
+    tool = MCPTool(
+        name=malicious,
+        description="A sufficiently detailed description for a maliciously named tool.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                malicious: {
+                    "type": "object",
+                    "properties": {
+                        "callback": {"description": "A callback with an omitted type."}
+                    },
+                }
+            },
+        },
+    )
+    static = run_static_checks([tool])
+    dynamic = DynamicCheckReport(
+        tools_tested_names=[malicious],
+        dynamic_tool_allowlist=[malicious],
+        limitations=[f"Protocol error from {malicious}"],
+    )
+    probe = MCPProbeResult(
+        reachable=True,
+        protocol_version="2025-11-25",
+        server_name=malicious,
+        tools=[tool],
+    )
+    report = build_report_dict(
+        "https://example.test/mcp",
+        probe,
+        static,
+        dynamic,
+        compute_score(static, dynamic),
+    )
+    markdown = build_markdown_report(report)
+    serialized = json.dumps(report)
+
+    assert fake_apify_token not in serialized
+    assert fake_bearer not in serialized
+    assert fake_apify_token not in markdown
+    assert fake_bearer not in markdown
+
+    def strings_in(value: object):
+        if isinstance(value, str):
+            yield value
+        elif isinstance(value, dict):
+            for item in value.values():
+                yield from strings_in(item)
+        elif isinstance(value, list):
+            for item in value:
+                yield from strings_in(item)
+
+    assert all(
+        all(character not in value for character in ("\x00", "\r", "\n"))
+        for value in strings_in(report)
+    )
+    assert "[REDACTED Apify API token]" in report["server_name"]
+
+    headings = [line for line in markdown.splitlines() if line.startswith("#")]
+    assert headings == [
+        "# MCP Security & Trust Report",
+        f"## Score: {report['score']}/100 (Grade {report['grade']})",
+        "## Execution transparency",
+        "## Summary",
+        "## Findings",
+        "## Limitations",
+    ]
+    assert "\n## injected heading" not in markdown
+    assert "\n- [link](https://attacker.example)" not in markdown
+    assert "\n<div>raw html</div>" not in markdown
+    assert "**Name:** `` bad`name" in markdown

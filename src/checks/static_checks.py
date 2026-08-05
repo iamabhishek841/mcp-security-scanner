@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
@@ -10,6 +11,9 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from src.mcp_client import MCPTool
 
 SECRET_PATTERNS = [
+    (r"(?i)\bBearer\s+[a-zA-Z0-9._~+/=-]{12,}", "Bearer credential"),
+    (r"(?i)\bBasic\s+[a-zA-Z0-9+/=]{12,}", "Basic credential"),
+    (r"apify_api_[a-zA-Z0-9_-]{20,}", "Apify API token"),
     (r"sk-[a-zA-Z0-9]{20,}", "OpenAI-style API key"),
     (r"AKIA[0-9A-Z]{16}", "AWS access key ID"),
     (r"ghp_[a-zA-Z0-9]{30,}", "GitHub personal access token"),
@@ -84,10 +88,23 @@ def sanitize_text(value: Any) -> str:
     return text
 
 
+def sanitize_single_line(value: Any) -> str:
+    """Redact secrets and normalize untrusted text for one-line output."""
+
+    text = sanitize_text(value)
+    text = "".join(
+        " "
+        if unicodedata.category(character) in {"Cc", "Cf", "Cs", "Zl", "Zp"}
+        else character
+        for character in text
+    )
+    return " ".join(text.split())
+
+
 def sanitize_url(value: Any) -> str:
     """Redact URL userinfo and common credential-bearing query parameters."""
 
-    text = sanitize_text(value)
+    text = sanitize_single_line(value)
     try:
         parsed = urlsplit(text)
         if not parsed.scheme or not parsed.netloc:
@@ -106,7 +123,7 @@ def sanitize_url(value: Any) -> str:
                     key,
                     "[REDACTED]"
                     if key.lower() in SENSITIVE_QUERY_NAMES
-                    else sanitize_text(item),
+                    else sanitize_single_line(item),
                 )
                 for key, item in parse_qsl(parsed.query, keep_blank_values=True)
             ],
@@ -171,7 +188,7 @@ def _iter_schema_properties(
 
 def _scan_text_for_secrets(texts: Iterator[str], tool_name: str, findings: list[Finding]) -> bool:
     found_labels: set[str] = set()
-    safe_tool_name = sanitize_text(tool_name)
+    safe_tool_name = sanitize_single_line(tool_name)
     for text in texts:
         for pattern, label in SECRET_PATTERNS:
             if label not in found_labels and re.search(pattern, text):
@@ -195,7 +212,7 @@ def _scan_text_for_injection(text: str, tool_name: str, findings: list[Finding])
             Finding(
                 severity="high",
                 category="prompt_injection_risk",
-                tool=sanitize_text(tool_name),
+                tool=sanitize_single_line(tool_name),
                 message=(
                     "Tool description contains agent-directed instruction language: "
                     f"'{phrase}'."
@@ -215,9 +232,9 @@ def _scan_schema_params(tool: MCPTool, findings: list[Finding]) -> bool:
             Finding(
                 severity="medium",
                 category="ssrf_prone_param",
-                tool=sanitize_text(tool.name),
+                tool=sanitize_single_line(tool.name),
                 message=(
-                    f"Parameter '{sanitize_text(path)}' accepts a URL/path-like value. "
+                    f"Parameter '{sanitize_single_line(path)}' accepts a URL/path-like value. "
                     "If unvalidated server-side, this can enable SSRF or path traversal."
                 ),
             )
@@ -238,7 +255,7 @@ def _has_type_contract(schema: Any) -> bool:
 
 def _check_schema_quality(tool: MCPTool, findings: list[Finding]) -> bool:
     poor = False
-    safe_tool_name = sanitize_text(tool.name)
+    safe_tool_name = sanitize_single_line(tool.name)
     if not tool.description or len(tool.description.strip()) < 10:
         findings.append(
             Finding(
@@ -269,8 +286,8 @@ def _check_schema_quality(tool: MCPTool, findings: list[Finding]) -> bool:
                     category="schema_quality",
                     tool=safe_tool_name,
                     message=(
-                        f"Parameter '{sanitize_text(path)}' has no declared type or equivalent "
-                        "schema contract."
+                        f"Parameter '{sanitize_single_line(path)}' has no declared type or "
+                        "equivalent schema contract."
                     ),
                 )
             )

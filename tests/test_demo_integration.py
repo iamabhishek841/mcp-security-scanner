@@ -20,7 +20,7 @@ def test_safe_demo_server_end_to_end() -> None:
         assert probe.reachable
         assert probe.error is None
         assert probe.server_name == "safe-vulnerable-demo"
-        assert probe.protocol_version == "2025-06-18"
+        assert probe.protocol_version == "2025-11-25"
         assert [tool.name for tool in probe.tools] == [
             "fetch_preview",
             "credential_status",

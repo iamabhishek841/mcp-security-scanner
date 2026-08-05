@@ -5,7 +5,22 @@ import json
 
 import httpx
 
-from src.mcp_client import MCPClient, MCPClientError, is_tool_call_success
+from src.mcp_client import (
+    PREFERRED_PROTOCOL_VERSION,
+    SUPPORTED_PROTOCOL_VERSIONS,
+    MCPClient,
+    MCPClientError,
+    is_tool_call_success,
+)
+
+
+def test_supported_protocol_versions_are_explicit_stable_revisions() -> None:
+    assert PREFERRED_PROTOCOL_VERSION == "2025-11-25"
+    assert SUPPORTED_PROTOCOL_VERSIONS == {
+        "2025-11-25",
+        "2025-06-18",
+        "2025-03-26",
+    }
 
 
 def test_tool_call_success_requires_http_rpc_and_tool_success() -> None:
@@ -53,6 +68,7 @@ def test_lifecycle_headers_initialized_notification_and_pagination() -> None:
         body = json.loads(request.content)
         requests.append((body, request.headers))
         if body["method"] == "initialize":
+            assert body["params"]["protocolVersion"] == PREFERRED_PROTOCOL_VERSION
             return httpx.Response(
                 200,
                 headers={"Mcp-Session-Id": "session-123"},
@@ -154,4 +170,79 @@ def test_initialize_json_rpc_error_is_reported_cleanly() -> None:
     probe = asyncio.run(client.probe())
     assert probe.reachable
     assert probe.error == "JSON-RPC error -32602: Unsupported version"
+    assert calls == 1
+
+
+def test_initialize_accepts_preferred_protocol_version() -> None:
+    requests: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        requests.append(body)
+        if body["method"] == "initialize":
+            assert body["params"]["protocolVersion"] == PREFERRED_PROTOCOL_VERSION
+            return httpx.Response(
+                200,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": body["id"],
+                    "result": {
+                        "protocolVersion": PREFERRED_PROTOCOL_VERSION,
+                        "capabilities": {"tools": {}},
+                    },
+                },
+            )
+        if body["method"] == "notifications/initialized":
+            return httpx.Response(202)
+        return httpx.Response(
+            200,
+            json={
+                "jsonrpc": "2.0",
+                "id": body["id"],
+                "result": {"tools": []},
+            },
+        )
+
+    probe = asyncio.run(
+        MCPClient(
+            "https://mcp.example.test/mcp",
+            transport=httpx.MockTransport(handler),
+        ).probe()
+    )
+    assert probe.error is None
+    assert probe.protocol_version == PREFERRED_PROTOCOL_VERSION
+    assert [request["method"] for request in requests] == [
+        "initialize",
+        "notifications/initialized",
+        "tools/list",
+    ]
+
+
+def test_initialize_rejects_unsupported_protocol_version() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        body = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "jsonrpc": "2.0",
+                "id": body["id"],
+                "result": {
+                    "protocolVersion": "2099-01-01\r\n# injected",
+                    "capabilities": {},
+                },
+            },
+        )
+
+    probe = asyncio.run(
+        MCPClient(
+            "https://mcp.example.test/mcp",
+            transport=httpx.MockTransport(handler),
+        ).probe()
+    )
+    assert probe.reachable
+    assert probe.error == "initialize negotiated an unsupported MCP protocol version"
     assert calls == 1

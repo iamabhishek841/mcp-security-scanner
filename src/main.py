@@ -6,7 +6,11 @@ from apify import Actor
 
 from src.checks.dynamic_checks import run_dynamic_checks
 from src.checks.scoring import compute_score
-from src.checks.static_checks import run_static_checks, sanitize_text, sanitize_url
+from src.checks.static_checks import (
+    run_static_checks,
+    sanitize_single_line,
+    sanitize_url,
+)
 from src.mcp_client import MCPClient
 from src.report import build_markdown_report, build_report_dict
 
@@ -54,7 +58,9 @@ async def main() -> None:
         probe = await client.probe()
 
         if not probe.reachable or probe.error:
-            safe_error = sanitize_text(probe.error or "Unknown connection error")
+            safe_error = sanitize_single_line(
+                probe.error or "Unknown connection error"
+            )
             Actor.log.error(f"MCP discovery could not be completed: {safe_error}")
             static_report = run_static_checks([])
             score = compute_score(static_report, None)

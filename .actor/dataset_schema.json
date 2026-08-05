@@ -184,5 +184,38 @@
       "limitations"
     ]
   },
-  "views": {}
+  "views": {
+    "overview": {
+      "title": "Overview",
+      "description": "High-level MCP reachability, inventory, and trust-score results. Complete findings, summary data, and limitations remain available in each dataset item.",
+      "transformation": {
+        "fields": [
+          "scanned_at",
+          "server_name",
+          "reachable",
+          "tool_count",
+          "score",
+          "grade",
+          "scan_mode",
+          "controlled_probe_url_used"
+        ]
+      },
+      "display": {
+        "component": "table",
+        "properties": {
+          "scanned_at": {"label": "Scanned at", "format": "date"},
+          "server_name": {"label": "Server", "format": "text"},
+          "reachable": {"label": "Reachable", "format": "boolean"},
+          "tool_count": {"label": "Tools", "format": "number"},
+          "score": {"label": "Score", "format": "number"},
+          "grade": {"label": "Grade", "format": "text"},
+          "scan_mode": {"label": "Scan mode", "format": "text"},
+          "controlled_probe_url_used": {
+            "label": "Controlled callback used",
+            "format": "boolean"
+          }
+        }
+      }
+    }
+  }
 }

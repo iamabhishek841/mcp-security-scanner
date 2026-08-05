@@ -10,7 +10,11 @@ from typing import Any
 
 import httpx
 
-from src.checks.static_checks import SENSITIVE_PARAM_NAMES, Finding, sanitize_text
+from src.checks.static_checks import (
+    SENSITIVE_PARAM_NAMES,
+    Finding,
+    sanitize_single_line,
+)
 from src.mcp_client import MCPClient, MCPClientError, MCPTool, is_tool_call_success
 
 STACK_TRACE_MARKERS = [
@@ -105,14 +109,16 @@ async def run_dynamic_checks(
     allowed_names = set(normalized_allowlist)
     selected = [tool for tool in tools if tool.name in allowed_names][:max_tools]
     report = DynamicCheckReport(
-        dynamic_tool_allowlist=[sanitize_text(name) for name in normalized_allowlist],
+        dynamic_tool_allowlist=[
+            sanitize_single_line(name) for name in normalized_allowlist
+        ],
     )
 
     missing = [name for name in normalized_allowlist if name not in {tool.name for tool in tools}]
     if missing:
         report.limitations.append(
             "Some allowlisted tool names were not advertised and were not executed: "
-            + ", ".join(sanitize_text(name) for name in missing)
+            + ", ".join(sanitize_single_line(name) for name in missing)
             + "."
         )
     if len(selected) < len([tool for tool in tools if tool.name in allowed_names]):
@@ -140,7 +146,7 @@ async def run_dynamic_checks(
             except MCPClientError as exc:
                 report.limitations.append(
                     "Unauthenticated comparison session could not be initialized: "
-                    f"{sanitize_text(exc)}."
+                    f"{sanitize_single_line(exc)}."
                 )
                 no_auth_client = None
         elif not also_test_unauth:
@@ -149,7 +155,7 @@ async def run_dynamic_checks(
             )
 
         for tool in selected:
-            safe_tool_name = sanitize_text(tool.name)
+            safe_tool_name = sanitize_single_line(tool.name)
             report.tools_tested += 1
             report.tools_tested_names.append(safe_tool_name)
 

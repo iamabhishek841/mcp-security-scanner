@@ -42,6 +42,25 @@ def test_output_and_dataset_metadata_cover_agent_outputs() -> None:
     assert required_fields <= set(dataset["fields"]["properties"])
     assert required_fields <= set(dataset["fields"]["required"])
 
+    overview = dataset["views"]["overview"]
+    overview_fields = overview["transformation"]["fields"]
+    assert overview["title"] == "Overview"
+    assert overview["display"]["component"] == "table"
+    assert overview_fields == [
+        "scanned_at",
+        "server_name",
+        "reachable",
+        "tool_count",
+        "score",
+        "grade",
+        "scan_mode",
+        "controlled_probe_url_used",
+    ]
+    assert set(overview_fields) <= set(dataset["fields"]["properties"])
+    assert {"summary", "findings", "limitations"} <= set(
+        dataset["fields"]["required"]
+    )
+
 
 def test_dynamic_inputs_are_safe_by_default() -> None:
     schema = _read_json(".actor/input_schema.json")

@@ -14,7 +14,14 @@ from typing import Any
 
 import httpx
 
-LATEST_PROTOCOL_VERSION = "2025-06-18"
+PREFERRED_PROTOCOL_VERSION = "2025-11-25"
+SUPPORTED_PROTOCOL_VERSIONS = frozenset(
+    {
+        PREFERRED_PROTOCOL_VERSION,
+        "2025-06-18",
+        "2025-03-26",
+    }
+)
 
 
 class MCPClientError(Exception):
@@ -228,7 +235,7 @@ class MCPClient:
         init_body = self._rpc_body(
             "initialize",
             {
-                "protocolVersion": LATEST_PROTOCOL_VERSION,
+                "protocolVersion": PREFERRED_PROTOCOL_VERSION,
                 "capabilities": {},
                 "clientInfo": {"name": "mcp-security-scanner", "version": "0.2"},
             },
@@ -242,6 +249,10 @@ class MCPClient:
         negotiated_version = init_result.get("protocolVersion")
         if not isinstance(negotiated_version, str) or not negotiated_version:
             raise MCPClientError("initialize result omitted protocolVersion")
+        if negotiated_version not in SUPPORTED_PROTOCOL_VERSIONS:
+            raise MCPClientError(
+                "initialize negotiated an unsupported MCP protocol version"
+            )
 
         self.protocol_version = negotiated_version
         self.session_id = init_resp.headers.get("Mcp-Session-Id") or None

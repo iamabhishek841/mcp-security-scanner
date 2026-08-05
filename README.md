@@ -39,16 +39,19 @@ no built-in cloud-metadata, localhost, or private-service targets.
 The client:
 
 1. Sends `initialize` as the first MCP interaction.
-2. Parses the server's negotiated protocol version.
-3. Captures `Mcp-Session-Id` from the initialize response when supplied.
-4. Sends `notifications/initialized`.
-5. Includes `Mcp-Session-Id` and `MCP-Protocol-Version` on subsequent requests.
-6. Preserves `Authorization`, `Content-Type`, and JSON/SSE `Accept` headers.
-7. Handles plain JSON and Server-Sent Events (SSE).
-8. Selects the SSE JSON-RPC response matching the request ID, ignoring unrelated
+2. Advertises the stable `2025-11-25` revision as its preferred version.
+3. Accepts negotiation only to `2025-11-25`, `2025-06-18`, or `2025-03-26`;
+   unknown versions fail cleanly and draft revisions are not implemented.
+4. Captures `Mcp-Session-Id` from the initialize response when supplied.
+5. Sends `notifications/initialized`.
+6. Includes `Mcp-Session-Id` and the actual negotiated
+   `MCP-Protocol-Version` on subsequent requests.
+7. Preserves `Authorization`, `Content-Type`, and JSON/SSE `Accept` headers.
+8. Handles plain JSON and Server-Sent Events (SSE).
+9. Selects the SSE JSON-RPC response matching the request ID, ignoring unrelated
    notifications, server requests, and responses.
-9. Reports top-level JSON-RPC errors without treating them as successful calls.
-10. Follows opaque `nextCursor` values until all `tools/list` pages are read.
+10. Reports top-level JSON-RPC errors without treating them as successful calls.
+11. Follows opaque `nextCursor` values until all `tools/list` pages are read.
 
 ### Static checks
 
@@ -142,7 +145,14 @@ Every successful assessment includes:
 - `controlled_probe_url_used`
 - run-specific `limitations`
 
+The dataset's documented `Overview` table shows timestamp, server name,
+reachability, tool count, score, grade, scan mode, and controlled-callback use.
+The complete nested `summary`, `findings`, and `limitations` remain in every
+dataset item.
+
 Authorization values and detected credential strings are not included.
+Server-controlled identifiers and messages are normalized to one line in JSON
+and rendered as inert text or safe code spans in Markdown.
 
 [View the sanitized report produced by the local demo](docs/sample-vulnerable-mcp-report.md).
 
