@@ -12,8 +12,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.checks.static_checks import StaticCheckReport
 from src.checks.dynamic_checks import DynamicCheckReport
+from src.checks.static_checks import StaticCheckReport
 
 SEVERITY_PENALTY = {
     "critical": 40,

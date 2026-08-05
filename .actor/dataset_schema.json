@@ -1,0 +1,188 @@
+{
+  "actorSpecification": 1,
+  "fields": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "additionalProperties": true,
+    "properties": {
+      "scanned_at": {
+        "type": "string",
+        "format": "date-time",
+        "title": "Scan timestamp",
+        "description": "UTC timestamp at which the MCP assessment was produced; useful to agents deciding whether a result is still fresh."
+      },
+      "server_url": {
+        "type": "string",
+        "title": "MCP server URL",
+        "description": "Sanitized Streamable HTTP endpoint that was assessed. Authorization credentials are never included."
+      },
+      "server_name": {
+        "type": ["string", "null"],
+        "title": "Server name",
+        "description": "MCP server implementation name reported during initialization, when available."
+      },
+      "protocol_version": {
+        "type": ["string", "null"],
+        "title": "Negotiated protocol version",
+        "description": "MCP protocol version negotiated by initialize and used on subsequent HTTP requests."
+      },
+      "reachable": {
+        "type": "boolean",
+        "title": "Reachable",
+        "description": "Whether the scanner received an HTTP response from the MCP endpoint."
+      },
+      "tool_count": {
+        "type": "integer",
+        "minimum": 0,
+        "title": "Tool count",
+        "description": "Total tools discovered across all tools/list pagination pages."
+      },
+      "score": {
+        "type": ["integer", "null"],
+        "minimum": 0,
+        "maximum": 100,
+        "title": "Trust score",
+        "description": "Heuristic 0-100 prioritization score; it is not a security certification."
+      },
+      "grade": {
+        "type": ["string", "null"],
+        "enum": ["A", "B", "C", "D", "F", null],
+        "title": "Grade",
+        "description": "Letter band derived from the heuristic score."
+      },
+      "scan_mode": {
+        "type": "string",
+        "enum": ["static", "static_and_dynamic"],
+        "title": "Scan mode",
+        "description": "Tells an agent whether tools were eligible for authorized execution or only metadata was analyzed."
+      },
+      "tools_tested_dynamically": {
+        "type": "array",
+        "items": {"type": "string"},
+        "title": "Dynamically tested tools",
+        "description": "Sanitized exact names of tools that received one or more live calls."
+      },
+      "dynamic_tool_allowlist": {
+        "type": "array",
+        "items": {"type": "string"},
+        "title": "Dynamic allowlist",
+        "description": "Sanitized exact tool names the operator authorized for live testing."
+      },
+      "controlled_probe_url_used": {
+        "type": "boolean",
+        "title": "Controlled callback used",
+        "description": "Whether an operator-supplied callback URL was submitted during URL-handling checks; the URL itself is not exposed."
+      },
+      "summary": {
+        "type": "object",
+        "title": "Finding summary",
+        "description": "Counts grouped by static and dynamic check categories for routing and prioritization by AI agents.",
+        "additionalProperties": false,
+        "properties": {
+          "tools_with_secrets": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Tools whose advertised metadata contains at least one credential-shaped value."
+          },
+          "tools_with_injection_risk": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Tools with clearly agent-directed or instruction-overriding language."
+          },
+          "tools_with_ssrf_prone_params": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Tools with URL/path-like input surfaces requiring server-side review."
+          },
+          "tools_with_poor_schema": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Tools with missing descriptions or ambiguous parameter contracts."
+          },
+          "dynamic_checks_run": {
+            "type": "boolean",
+            "description": "Whether authorized dynamic mode was entered, even if no advertised tool matched the allowlist."
+          },
+          "ssrf_suspicious_tools": {
+            "type": ["integer", "null"],
+            "minimum": 0,
+            "description": "Allowlisted tools that accepted the controlled callback without an MCP error; null in static mode."
+          },
+          "unauth_accessible_tools": {
+            "type": ["integer", "null"],
+            "minimum": 0,
+            "description": "Allowlisted tools successful in a separately initialized unauthenticated session; null in static mode."
+          },
+          "stack_trace_leaks": {
+            "type": ["integer", "null"],
+            "minimum": 0,
+            "description": "Allowlisted tools returning stack-trace-like text after malformed input; null in static mode."
+          }
+        },
+        "required": [
+          "tools_with_secrets",
+          "tools_with_injection_risk",
+          "tools_with_ssrf_prone_params",
+          "tools_with_poor_schema",
+          "dynamic_checks_run",
+          "ssrf_suspicious_tools",
+          "unauth_accessible_tools",
+          "stack_trace_leaks"
+        ]
+      },
+      "findings": {
+        "type": "array",
+        "title": "Findings",
+        "description": "Severity-ranked, sanitized findings. Credential matches are described by type and never copied verbatim.",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "severity": {
+              "type": "string",
+              "enum": ["critical", "high", "medium", "low", "info"],
+              "description": "Prioritization level for the finding."
+            },
+            "category": {
+              "type": "string",
+              "description": "Stable machine-readable check category."
+            },
+            "tool": {
+              "type": ["string", "null"],
+              "description": "Sanitized tool name, or null for a server-level finding."
+            },
+            "message": {
+              "type": "string",
+              "description": "Sanitized explanation suitable for an AI agent or human reviewer."
+            }
+          },
+          "required": ["severity", "category", "tool", "message"]
+        }
+      },
+      "limitations": {
+        "type": "array",
+        "items": {"type": "string"},
+        "title": "Limitations",
+        "description": "Run-specific caveats an AI agent should consider before acting on the assessment."
+      }
+    },
+    "required": [
+      "scanned_at",
+      "server_url",
+      "server_name",
+      "protocol_version",
+      "reachable",
+      "tool_count",
+      "score",
+      "grade",
+      "scan_mode",
+      "tools_tested_dynamically",
+      "dynamic_tool_allowlist",
+      "controlled_probe_url_used",
+      "summary",
+      "findings",
+      "limitations"
+    ]
+  },
+  "views": {}
+}

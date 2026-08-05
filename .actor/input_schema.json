@@ -13,20 +13,42 @@
     "authHeader": {
       "title": "Authorization header (optional)",
       "type": "string",
-      "description": "If the server requires auth to list tools, provide it here (e.g. 'Bearer sk-...'). Leave empty to also test the server's unauthenticated behavior.",
+      "description": "Authorization header used for the authenticated scan (for example, 'Bearer ...'). When this value is supplied and authorized dynamic checks are enabled, the scanner can run an unauthenticated comparison for an allowlisted tool in a separate session without this header. The value is never written to reports.",
       "editor": "textfield",
       "isSecret": true
     },
     "runDynamicChecks": {
       "title": "Run dynamic checks",
       "type": "boolean",
-      "description": "If enabled, the scanner will make live test calls to the server (SSRF probes, malformed input, auth bypass attempts) in addition to static schema analysis. Disable for a read-only, schema-only scan.",
+      "description": "Execute live tools/call requests in addition to static analysis. Dynamic calls may trigger tool side effects. Requires authorizedToTest=true and a non-empty exact dynamicToolAllowlist.",
       "default": false
+    },
+    "authorizedToTest": {
+      "title": "I am authorized to test this server",
+      "type": "boolean",
+      "description": "Required for dynamic checks. Confirm only when you own the server or have explicit authorization to execute the allowlisted tools.",
+      "default": false
+    },
+    "dynamicToolAllowlist": {
+      "title": "Exact tool names allowed for dynamic testing",
+      "type": "array",
+      "description": "Only these exact advertised tool names may be executed. An empty list prevents all dynamic tool execution.",
+      "editor": "stringList",
+      "default": [],
+      "items": {
+        "type": "string"
+      }
+    },
+    "probeUrl": {
+      "title": "Controlled callback URL (optional)",
+      "type": "string",
+      "description": "A callback URL you control. SSRF behavioral testing is skipped unless this is explicitly provided. The scanner submits the value but cannot prove a fetch without callback telemetry.",
+      "editor": "textfield"
     },
     "maxToolsToTest": {
       "title": "Max tools to dynamically test",
       "type": "integer",
-      "description": "Caps how many exposed tools get live dynamic testing, to control scan time and load on the target server.",
+      "description": "Caps how many matching allowlisted tools receive live calls. Discovered tools outside the exact allowlist are never executed.",
       "default": 10,
       "minimum": 1,
       "maximum": 50
